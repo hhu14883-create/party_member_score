@@ -17,17 +17,15 @@ if data_file is not None and template_file is not None:
     try:
         st.info("🔄 正在深度解析文件结构并保留原始样式，请稍候...")
         
-        # 2. 自动根据文件后缀选择不同的引擎读取
+        # 自动根据文件后缀选择不同的引擎读取
         data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
         df_data = pd.read_excel(data_file, header=1, engine=data_engine)
         
         # 清洗空行
-        df_data = df_data.dropna(subset=[df_data.columns[0]]).reset_index(drop=True)
+        df_data = df_data.dropna(subset=[df_data.columns]).reset_index(drop=True)
         
-        # 获取基础党员信息
-        name_col = df_data.columns[0]   # 党员姓名
-        branch_col = df_data.columns[1] # 党支部
-        group_col = df_data.columns[2]  # 党小组
+        # 获取党员姓名列
+        name_col = df_data.columns
         
         # 提取所有的分数项列
         score_cols = df_data.columns[3:].tolist()
@@ -37,7 +35,7 @@ if data_file is not None and template_file is not None:
         default_sheet = output_wb.active
         output_wb.remove(default_sheet)
         
-        # 兼容读取标准考核模板
+        # 读取标准考核模板
         template_wb = openpyxl.load_workbook(template_file)
         ws_template = template_wb.active
         
@@ -47,15 +45,15 @@ if data_file is not None and template_file is not None:
             if not name or name == 'nan' or '党员姓名' in name:
                 continue
                 
-            # 为每一位党员复制一个带原样式的Sheet
-            ws_new = output_wb.create_sheet(title=f"{name}-积分卡")
+            # 🎯 核心优化 1：Sheet标签名称只要纯姓名，去掉所有多余后缀
+            ws_new = output_wb.create_sheet(title=f"{name}")
             
             # 精准复制模板的结构、内容和样式
             for r in range(1, ws_template.max_row + 1):
                 for c in range(1, ws_template.max_column + 1):
                     cell_template = ws_template.cell(row=r, column=c)
                     cell_new = ws_new.cell(row=r, column=c, value=cell_template.value)
-                    # 复制基础格式
+                    # 完整保留原始的所有精美格式（字体、颜色、对齐、边框）
                     if cell_template.has_style:
                         cell_new.font = openpyxl.styles.Font(name=cell_template.font.name, size=cell_template.font.size, bold=cell_template.font.bold, color=cell_template.font.color)
                         cell_new.alignment = openpyxl.styles.Alignment(horizontal=cell_template.alignment.horizontal, vertical=cell_template.alignment.vertical, wrap_text=cell_template.alignment.wrap_text)
@@ -63,28 +61,26 @@ if data_file is not None and template_file is not None:
                         if cell_template.fill:
                             cell_new.fill = openpyxl.styles.PatternFill(fill_type=cell_template.fill.fill_type, start_color=cell_template.fill.start_color, end_color=cell_template.fill.end_color)
             
-            # 🎯 核心修复：使用最新版 openpyxl 的 min_row / max_row 规范来复制合并单元格，彻底解决报错
+            # 完整复制合并单元格
             for merged_range in ws_template.merged_cells.ranges:
                 ws_new.merge_cells(start_row=merged_range.min_row, start_column=merged_range.min_col,
                                    end_row=merged_range.max_row, end_column=merged_range.max_col)
             
-            # 🎯 核心映射：将总表里一长串的得分，按顺序填入到新Sheet对应的“自评得分”和“考核得分”格子中
+            # 🎯 核心优化 2：彻底删除了之前强行在第1行写个人标志的乱套代码！
+            # 老老实实只把数据往模板的对应格子里填，不更改模板原有的任何字样
             score_index = 0
             for r in range(3, ws_new.max_row + 1):
                 val_b = str(ws_new.cell(row=r, column=2).value)
-                # 兼容表格中带有序号内容的评分项行
                 if val_b and any(f"{i}." in val_b for i in range(1, 10)) and score_index < len(score_cols):
-                    # 填入自评得分
+                    # 填入自评得分（C列）
                     if score_index < len(score_cols):
                         ws_new.cell(row=r, column=3, value=row[score_cols[score_index]])
                         score_index += 1
-                    # 填入考核得分
+                    # 填入考核得分（D列）
                     if score_index < len(score_cols):
                         ws_new.cell(row=r, column=4, value=row[score_cols[score_index]])
                         score_index += 1
             
-            # 在顶部合并的第一行直接优雅覆盖写入个人标志
-            ws_new.cell(row=1, column=1, value=f"🇨🇳 党员姓名: {name}   党支部: {row[branch_col]}   党小组: {row[group_col]}")
             generated_count += 1
 
         # 4. 二进制流一键打包导出
@@ -92,12 +88,12 @@ if data_file is not None and template_file is not None:
         output_wb.save(buffer)
         buffer.seek(0)
         
-        st.success(f"🎉 全员分装成功！已成功为 {generated_count} 名党员每人自动生成了专属的独立工作表。")
+        st.success(f"🎉 纯净分装成功！已成功为 {generated_count} 名党员每人自动生成了纯净独立的专属工作表。")
         
         st.download_button(
-            label="🚀 一键下载【全员72人独立积分卡总整合表.xlsx】",
+            label="🚀 一键下载【全员72人纯净积分卡总整合表.xlsx】",
             data=buffer,
-            file_name='全员72人独立积分卡总整合表.xlsx',
+            file_name='全员72人纯净积分卡总整合表.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         
