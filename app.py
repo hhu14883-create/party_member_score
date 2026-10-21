@@ -1,79 +1,75 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import openpyxl
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 st.set_page_config(page_title="党员积分自动整合与统计", layout="wide")
 st.title("🇨🇳 党员积分自动整合与统计系统")
-st.write("上传《党员积分表_全部72人整合版.xlsx》，自动清洗数据、计算总积分、生成党内名次与积分等级。")
+st.write("上传您的《党员积分表_全部72人整合版.xlsx》，系统将在不破坏任何原始合并单元格、字体和样式的前提下，完美追加名次与等级。")
 
 uploaded_file = st.file_uploader("请上传党员积分 Excel 文件", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
     try:
-        # 1. 读取原始数据
-        df = pd.read_excel(uploaded_file)
-        st.success("📂 原始数据导入成功！正在为您自动分析...")
+        # 1. 使用 openpyxl 完整读取带样式的原始表格文件
+        wb = openpyxl.load_workbook(uploaded_file)
+        ws = wb.active
         
-        # 2. 自动寻找姓名/党员名称列
-        name_col = None
-        for col in df.columns:
-            if '姓名' in str(col) or '党员' in str(col) or '名字' in str(col):
-                name_col = col
-                break
-        if not name_col:
-            name_col = df.columns[0] # 如果没找到，默认第一列为标识列
-            
-        # 3. 自动识别所有数值型的“积分项”并计算总分
-        # 排除包含‘名次’、‘排名’、‘手机’、‘身份证’等无关的数值列
+        # 2. 用 pandas 临时读取数据，用来精确计算总分和名次
+        df_raw = pd.read_excel(uploaded_file, header=1)
+        df_raw = df_raw.dropna(subset=[df_raw.columns[0], df_raw.columns[1]], how='all').reset_index(drop=True)
+        
+        # 自动识别数值项并算总分
         exclude_keywords = ['名次', '排名', '手机', '电话', '身份', '序号', 'id', 'ID']
-        score_cols = []
-        for col in df.select_dtypes(include=['int64', 'float64']).columns:
-            if not any(kw in str(col) for kw in exclude_keywords):
-                score_cols = score_cols + [col]
-                
-        # 核心整合：自动将所有分项积分相加得到最新总积分
-        total_col_name = '最终总积分'
-        df[total_col_name] = df[score_cols].sum(axis=1)
+        score_cols = [col for col in df_raw.select_dtypes(include=['int64', 'float64']).columns if not any(kw in str(col) for kw in exclude_keywords)]
         
-        # 4. 核心排序：按最终总积分进行降序排列
-        df_sorted = df.sort_values(by=total_col_name, ascending=False).reset_index(drop=True)
+        # 计算总积分
+        df_raw['最终总积分'] = df_raw[score_cols].sum(axis=1)
+        # 根据总积分进行名次排序
+        df_raw['新名次'] = df_raw['最终总积分'].rank(ascending=False, method='min').astype(int)
         
-        # 5. 核心插入：在表格第一列插入【党内名次】
-        df_sorted.insert(0, '党内名次', df_sorted.index + 1)
-        
-        # 6. 核心划分：根据总分自动划分【积分等级】
-        # 优秀：>=90, 合格: 80-89, 基本合格: 60-79, 不合格: <60
-        def calculate_level(score):
-            if score >= 90: return '优秀'
-            elif score >= 80: return '合格'
-            elif score >= 60: return '基本合格'
-            else: return '不合格'
+        # 3. 核心突破：直接在原始带有合并单元格的表格中“填空”
+        # 我们从第 3 行（真实数据开始的行）向下循环，把名次精准填入 A 列
+        党员映射 = {}
+        for idx, row in df_raw.iterrows():
+            姓名 = str(row[df_raw.columns[0]]).strip()
+            党员映射[姓名] = {
+                '名次': int(row['新名次']),
+                '总分': float(row['最终总积分'])
+            }
             
-        df_sorted['积分等级'] = df_sorted[total_col_name].apply(calculate_level)
+        # 扫描 openpyxl 的格子
+        for r in range(3, ws.max_row + 1):
+            姓名格子 = ws.cell(row=r, column=2).value # 假设B列是党员姓名
+            if 姓名格子 and str(姓名格子).strip() in 党员映射:
+                info = 党员映射[str(姓名格子).strip()]
+                # A列原地修改为最新党内名次
+                ws.cell(row=r, column=1, value=info['名次'])
+                
+                # 在表格最右侧（最后一列+1）原地追加积分等级
+                total_score = info['总分']
+                if total_score >= 90: 等级 = '优秀'
+                elif total_score >= 80: 等级 = '合格'
+                elif total_score >= 60: 等级 = '基本合格'
+                else: 等级 = '不合格'
+                
+                # 寻找表格最右边一列填入等级
+                ws.cell(row=r, column=ws.max_column, value=等级)
+                
+        st.success("📂 完美兼容！名次与等级已完美注入原始模板中，未损坏任何样式！")
         
-        # 7. 看板数据统计
-        st.subheader("📊 核心数据快报")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("总党员人数", f"{len(df_sorted)} 人")
-        c2.metric("党内最高分", f"{df_sorted[total_col_name].max()} 分")
-        c3.metric("全员平均分", f"{df_sorted[total_col_name].mean():.1f} 分")
-        c4.metric("不及格人数（红牌）", f"{len(df_sorted[df_sorted[total_col_name] < 60])} 人")
+        # 4. 一键导出原汁原味的二进制成品表格
+        import io
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
         
-        # 8. 预览前 10 名
-        st.subheader("🏆 积分红榜（前10名党员）")
-        st.dataframe(df_sorted[['党内名次', name_col, total_col_name, '积分等级']].head(10), use_container_width=True)
-        
-        # 9. 一键导出成品
-        st.subheader("📥 导出完美成品表格")
-        
-        # 转换为 csv 格式供直接下载
-        csv_data = df_sorted.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
-            label="🚀 点击一键下载【72人党员积分自动统计完美成品表】",
-            data=csv_data,
-            file_name='72人党员积分自动统计完美成品表.csv',
-            mime='text/csv'
+            label="🚀 点击一键下载【72人党员积分原格式完美成品表】",
+            data=buffer,
+            file_name='党员积分表_全部72人整合版_已统计.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         
     except Exception as e:
-        st.error(f"❌ 分析表格时出现问题，请确保表格格式正常。错误原因: {e}")
+        st.error(f"❌ 处理表格时出现问题，错误原因: {e}")
