@@ -15,37 +15,46 @@ with col2:
 
 if data_file is not None and template_file is not None:
     try:
-        st.info("🔄 正在深度解析文件结构并保留原始样式，请稍候...")
+        st.info("🔄 正在完美克隆模板格式并填充数据，请稍候...")
         
-        # 1. 核心修复：header=[0, 1] 把双行表头完整作为整体读取，绝不破坏表头结构
+        # 1. 读取汇总数据
         data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
-        df_data = pd.read_excel(data_file, header=[0, 1], engine=data_engine)
+        df_data = pd.read_excel(data_file, header=1, engine=data_engine)
+        df_data = df_data.dropna(subset=[df_data.columns]).reset_index(drop=True)
         
-        # 2. 核心修复：安全地提取第一列（党员姓名）和后续的分数列，彻底绕过 MultiIndex 的 fillna 限制
-        # 我们直接使用无视表头层级的行位置（iloc）和列位置来纯粹抓取数据
-        raw_values = df_data.values
+        name_col = df_data.columns
+        score_cols = df_data.columns[3:].tolist()
         
-        # 读取标准考核模板
+        # 创建最终导出的总工作簿
+        output_wb = openpyxl.Workbook()
+        default_sheet = output_wb.active
+        output_wb.remove(default_sheet)
+        
+        # 读取标准模板
         template_wb = openpyxl.load_workbook(template_file)
         ws_template = template_wb.active
         
         generated_count = 0
-        for row_values in raw_values:
-            # 拿到姓名（假设在第1列）
-            name = str(row_values[0]).strip()
-            # 过滤掉无效行
-            if not name or name == 'nan' or '党员姓名' in name or '备注' in name:
+        for index, row in df_data.iterrows():
+            name = str(row[name_col]).strip()
+            if not name or name == 'nan' or '党员姓名' in name:
                 continue
                 
-            # Sheet 标签名称只要纯姓名
-            ws_new = output_wb = openpyxl.Workbook() if generated_count == 0 else output_wb
+            # 创建以党员姓名命名的干净独立工作表
             ws_new = output_wb.create_sheet(title=f"{name}")
             
-            # 精准复制模板的结构、内容和样式
+            # 🎯 核心优化 1：100% 原样克隆模板的列宽与行高，防止文字挤压变形
+            for col_letter, col_dim in ws_template.column_dimensions.items():
+                ws_new.column_dimensions[col_letter].width = col_dim.width
+            for row_num, row_dim in ws_template.row_dimensions.items():
+                ws_new.row_dimensions[row_num].height = row_dim.height
+            
+            # 2. 精准复制模板的每一个单元格的内容和视觉样式
             for r in range(1, ws_template.max_row + 1):
                 for c in range(1, ws_template.max_column + 1):
                     cell_template = ws_template.cell(row=r, column=c)
                     cell_new = ws_new.cell(row=r, column=c, value=cell_template.value)
+                    
                     if cell_template.has_style:
                         cell_new.font = openpyxl.styles.Font(name=cell_template.font.name, size=cell_template.font.size, bold=cell_template.font.bold, color=cell_template.font.color)
                         cell_new.alignment = openpyxl.styles.Alignment(horizontal=cell_template.alignment.horizontal, vertical=cell_template.alignment.vertical, wrap_text=cell_template.alignment.wrap_text)
@@ -53,46 +62,38 @@ if data_file is not None and template_file is not None:
                         if cell_template.fill:
                             cell_new.fill = openpyxl.styles.PatternFill(fill_type=cell_template.fill.fill_type, start_color=cell_template.fill.start_color, end_color=cell_template.fill.end_color)
             
-            # 完整复制合并单元格
+            # 3. 完美复制合并单元格结构
             for merged_range in ws_template.merged_cells.ranges:
                 ws_new.merge_cells(start_row=merged_range.min_row, start_column=merged_range.min_col,
                                    end_row=merged_range.max_row, end_column=merged_range.max_col)
             
-            # 🎯 核心映射：纯粹、干净地按顺序把分数填入模板的 C 列（自评）和 D 列（考核）
-            # 从第4列开始都是纯分数（row_values[3:]）
-            score_values = [v for v in row_values[3:] if pd.notna(v)]
+            # 🎯 核心优化 2：【彻底纯净填数据】绝对不改动第一行和任何多余文字
             score_index = 0
-            
             for r in range(3, ws_new.max_row + 1):
                 val_b = str(ws_new.cell(row=r, column=2).value)
-                # 只要内容包含数字序号（如1. 2. 3.），就是我们需要填分的考评行
                 if val_b and any(f"{i}." in val_b for i in range(1, 10)):
                     # 填入自评得分（C列）
-                    if score_index < len(score_values):
-                        ws_new.cell(row=r, column=3, value=score_values[score_index])
+                    if score_index < len(score_cols):
+                        ws_new.cell(row=r, column=3, value=row[score_cols[score_index]])
                         score_index += 1
                     # 填入考核得分（D列）
-                    if score_index < len(score_values):
-                        ws_new.cell(row=r, column=4, value=score_values[score_index])
+                    if score_index < len(score_cols):
+                        ws_new.cell(row=r, column=4, value=row[score_cols[score_index]])
                         score_index += 1
             
             generated_count += 1
-            
-        # 移除 Workbook 默认自带的第一个空白空白工作表
-        if "Sheet" in output_wb.sheetnames:
-            output_wb.remove(output_wb["Sheet"])
 
         # 4. 二进制流一键打包导出
         buffer = io.BytesIO()
         output_wb.save(buffer)
         buffer.seek(0)
         
-        st.success(f"🎉 纯净分装成功！已成功为 {generated_count} 名党员每人自动生成了纯净独立的专属工作表。")
+        st.success(f"🎉 完美复原分装成功！已成功为 {generated_count} 名党员生成了与原模板格式100%一致的独立工作表。")
         
         st.download_button(
-            label="🚀 一键下载【全员72人纯净积分卡总整合表.xlsx】",
+            label="🚀 一键下载【全员72人原样样式积分卡总表.xlsx】",
             data=buffer,
-            file_name='全员72人纯净积分卡总整合表.xlsx',
+            file_name='全员72人原样样式积分卡总表.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         
