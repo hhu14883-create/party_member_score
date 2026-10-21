@@ -17,15 +17,15 @@ if data_file is not None and template_file is not None:
     try:
         st.info("🔄 正在完美克隆模板格式并填充数据，请稍候...")
         
-        # 1. 核心修复：直接使用最原始的 values 矩阵读取，不设任何 header，彻底无视 MultiIndex 结构！
+        # 1. 直接使用最原始的 values 矩阵读取，不设任何 header
         data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
         df_raw = pd.read_excel(data_file, header=None, engine=data_engine)
         raw_matrix = df_raw.values
         
         # 创建最终导出的总工作簿
         output_wb = openpyxl.Workbook()
-        default_sheet = output_wb.active
-        output_wb.remove(default_sheet)
+        # 🎯 核心修复：先保留默认的活动工作表，绝对不在一开始就删除它，避免触发 Excel 空壳报错
+        active_first_sheet = output_wb.active
         
         # 读取标准模板
         template_wb = openpyxl.load_workbook(template_file)
@@ -33,19 +33,25 @@ if data_file is not None and template_file is not None:
         
         generated_count = 0
         
-        # 2. 核心修复：纯手工坐标遍历，由于汇总表前两行是标题，数据从第3行（Python索引2）开始
+        # 2. 纯手工坐标遍历，数据从第3行（Python索引2）开始
         for r_idx in range(2, len(raw_matrix)):
             row_values = raw_matrix[r_idx]
             
-            # 第一列（索引0）通常是“党内名次”或者“序号”，第二列（索引1）是党员姓名
+            # 第二列（索引1）是党员姓名
+            if len(row_values) < 2:
+                continue
             name = str(row_values[1]).strip()
             
             # 过滤掉完全为空的无意义行或标题行
             if not name or name == 'nan' or '党员姓名' in name or '备注' in name or '党支部' in name:
                 continue
                 
-            # 创建以党员姓名命名的干净独立工作表
-            ws_new = output_wb.create_sheet(title=f"{name}")
+            # 🎯 核心修复：如果是第一个党员，直接把默认自带的表格重命名，不新建也不删除，彻底破除 visible 报错！
+            if generated_count == 0:
+                ws_new = active_first_sheet
+                ws_new.title = f"{name}"
+            else:
+                ws_new = output_wb.create_sheet(title=f"{name}")
             
             # 3. 100% 原样克隆模板的列宽与行高
             for col_letter, col_dim in ws_template.column_dimensions.items():
@@ -71,8 +77,7 @@ if data_file is not None and template_file is not None:
                 ws_new.merge_cells(start_row=merged_range.min_row, start_column=merged_range.min_col,
                                    end_row=merged_range.max_row, end_column=merged_range.max_col)
             
-            # 6. 核心优化：按顺序提取该党员对应的所有分数值（从第4列，即索引3开始）
-            # 无视所有空的干扰，按序一一抓取
+            # 6. 按顺序提取该党员对应的所有分数值（从第4列，即索引3开始）
             score_values = []
             for v in row_values[3:]:
                 if pd.notna(v) and str(v).strip() != '':
@@ -97,7 +102,7 @@ if data_file is not None and template_file is not None:
             
             generated_count += 1
 
-        # 8. 二进制流一键打包导出
+        # 4. 二进制流一键打包导出
         buffer = io.BytesIO()
         output_wb.save(buffer)
         buffer.seek(0)
