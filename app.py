@@ -17,13 +17,10 @@ if data_file is not None and template_file is not None:
     try:
         st.info("🔄 正在完美克隆模板格式并填充数据，请稍候...")
         
-        # 1. 读取汇总数据
+        # 1. 核心修复：直接使用最原始的 values 矩阵读取，不设任何 header，彻底无视 MultiIndex 结构！
         data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
-        df_data = pd.read_excel(data_file, header=1, engine=data_engine)
-        df_data = df_data.dropna(subset=[df_data.columns]).reset_index(drop=True)
-        
-        name_col = df_data.columns
-        score_cols = df_data.columns[3:].tolist()
+        df_raw = pd.read_excel(data_file, header=None, engine=data_engine)
+        raw_matrix = df_raw.values
         
         # 创建最终导出的总工作簿
         output_wb = openpyxl.Workbook()
@@ -35,21 +32,28 @@ if data_file is not None and template_file is not None:
         ws_template = template_wb.active
         
         generated_count = 0
-        for index, row in df_data.iterrows():
-            name = str(row[name_col]).strip()
-            if not name or name == 'nan' or '党员姓名' in name:
+        
+        # 2. 核心修复：纯手工坐标遍历，由于汇总表前两行是标题，数据从第3行（Python索引2）开始
+        for r_idx in range(2, len(raw_matrix)):
+            row_values = raw_matrix[r_idx]
+            
+            # 第一列（索引0）通常是“党内名次”或者“序号”，第二列（索引1）是党员姓名
+            name = str(row_values[1]).strip()
+            
+            # 过滤掉完全为空的无意义行或标题行
+            if not name or name == 'nan' or '党员姓名' in name or '备注' in name or '党支部' in name:
                 continue
                 
             # 创建以党员姓名命名的干净独立工作表
             ws_new = output_wb.create_sheet(title=f"{name}")
             
-            # 🎯 核心优化 1：100% 原样克隆模板的列宽与行高，防止文字挤压变形
+            # 3. 100% 原样克隆模板的列宽与行高
             for col_letter, col_dim in ws_template.column_dimensions.items():
                 ws_new.column_dimensions[col_letter].width = col_dim.width
             for row_num, row_dim in ws_template.row_dimensions.items():
                 ws_new.row_dimensions[row_num].height = row_dim.height
             
-            # 2. 精准复制模板的每一个单元格的内容和视觉样式
+            # 4. 精准复制模板的每一个单元格的内容和视觉样式
             for r in range(1, ws_template.max_row + 1):
                 for c in range(1, ws_template.max_column + 1):
                     cell_template = ws_template.cell(row=r, column=c)
@@ -62,28 +66,38 @@ if data_file is not None and template_file is not None:
                         if cell_template.fill:
                             cell_new.fill = openpyxl.styles.PatternFill(fill_type=cell_template.fill.fill_type, start_color=cell_template.fill.start_color, end_color=cell_template.fill.end_color)
             
-            # 3. 完美复制合并单元格结构
+            # 5. 完美复制合并单元格结构
             for merged_range in ws_template.merged_cells.ranges:
                 ws_new.merge_cells(start_row=merged_range.min_row, start_column=merged_range.min_col,
                                    end_row=merged_range.max_row, end_column=merged_range.max_col)
             
-            # 🎯 核心优化 2：【彻底纯净填数据】绝对不改动第一行和任何多余文字
+            # 6. 核心优化：按顺序提取该党员对应的所有分数值（从第4列，即索引3开始）
+            # 无视所有空的干扰，按序一一抓取
+            score_values = []
+            for v in row_values[3:]:
+                if pd.notna(v) and str(v).strip() != '':
+                    try:
+                        score_values.append(float(v))
+                    except:
+                        pass
+                        
+            # 7. 纯净填入数据：老老实实将分数填入模板对应的 C 列和 D 列
             score_index = 0
             for r in range(3, ws_new.max_row + 1):
                 val_b = str(ws_new.cell(row=r, column=2).value)
                 if val_b and any(f"{i}." in val_b for i in range(1, 10)):
                     # 填入自评得分（C列）
-                    if score_index < len(score_cols):
-                        ws_new.cell(row=r, column=3, value=row[score_cols[score_index]])
+                    if score_index < len(score_values):
+                        ws_new.cell(row=r, column=3, value=score_values[score_index])
                         score_index += 1
                     # 填入考核得分（D列）
-                    if score_index < len(score_cols):
-                        ws_new.cell(row=r, column=4, value=row[score_cols[score_index]])
+                    if score_index < len(score_values):
+                        ws_new.cell(row=r, column=4, value=score_values[score_index])
                         score_index += 1
             
             generated_count += 1
 
-        # 4. 二进制流一键打包导出
+        # 8. 二进制流一键打包导出
         buffer = io.BytesIO()
         output_wb.save(buffer)
         buffer.seek(0)
