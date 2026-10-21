@@ -3,66 +3,53 @@ import pandas as pd
 import io
 import openpyxl
 
-# 1. 网页精美视觉包装（加入渐变色、国徽红与高级质感）
-st.set_page_config(page_title="车间通用-党员积分卡自动分装生成系统", layout="wide", page_icon="🇨🇳")
+# 1. 网页标签与配置
+st.set_page_config(page_title="党员积分卡一键自动分装生成系统", layout="wide")
 
+# 2. 极致精简的商业化视觉：彻底删除一切额外杂质字眼，只保留核心系统名称
+st.title("党员积分卡一键自动分装生成系统")
+st.caption("🚀 专为基层党组织定制的办公自动化工具")
+
+# 3. 直观且规范的【使用说明】
 st.markdown("""
-    <style>
-    .main-title {
-        font-size: 32px;
-        font-weight: bold;
-        color: #d32f2f;
-        text-align: center;
-        margin-bottom: 5px;
-    }
-    .sub-title {
-        font-size: 16px;
-        color: #555;
-        text-align: center;
-        margin-bottom: 25px;
-    }
-    .info-box {
-        background-color: #fefefe;
-        padding: 15px;
-        border-left: 5px solid #d32f2f;
-        border-radius: 4px;
-        margin-bottom: 20px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    </style>
-""", unsafe_allow_html=True)
+---
+### 📖 使用说明
+为了确保系统能够精准完成数据自动誊抄，请确保您上传的两个 Excel 文件满足以下基础格式：
 
-st.markdown("<div class='main-title'>🇨🇳 党员积分卡一键自动分装生成系统</div>", unsafe_allow_html=True)
-st.markdown("<div class='sub-title'>车间通用免费版 · 复杂合并单元格与行高列宽100%原样保留</div>", unsafe_allow_html=True)
+* **📁 1. 全员数据汇总表（Excel）**
+  * 表格的 **第 2 行** 必须为真正的列标题（如：名次、党员姓名、党支部、党小组等）。
+  * 表格的 **第二列** 必须包含党员的名字。
+  * 从 **第四列** 开始，依次往后排列每一项考核的得分（自评分、考核分交替排列）。
 
-st.markdown("""
-<div class='info-box'>
-    <b>💡 使用说明：</b><br>
-    1. 在左侧框上传各车间汇总的【全员数据汇总表】（含党员姓名与各项得分）。<br>
-    2. 在右侧框上传您车间专属的【标准空白考核模板】。<br>
-    3. 检查无误后，点击下方的<b>“🚀 开始一键智能分装”</b>按钮，系统将自动为每位党员生成独立的工作表并保留完美格式。
-</div>
-""", unsafe_allow_html=True)
+* **📄 2. 标准考核模板（Excel）**
+  * 表格的 **B 列（第二列）** 必须为具体的考评指标内容，且文本中带有 `1. ` `2. ` `3. ` 等数字序号。
+  * 表格的 **C 列和 D 列（第三、四列）** 分别留空，用于系统自动填入自评得分和考核得分。
+---
+""")
 
-# 2. 提供双文件上传入口
+# 4. 双文件上传组件
 col1, col2 = st.columns(2)
 with col1:
-    data_file = st.file_uploader("📥 请上传《党员积分汇总表》（全员数据）", type=["xlsx", "xls"])
+    data_file = st.file_uploader("📥 第一步：请上传【全员数据汇总表】（所有人员得分汇总）", type=["xlsx", "xls"])
 with col2:
-    template_file = st.file_uploader("📥 请上传《党员责任岗考评指标》（空白标准模板）", type=["xlsx", "xls"])
+    template_file = st.file_uploader("📥 第二步：请上传【标准空白考核模板】（各车间通用的空白格式）", type=["xlsx", "xls"])
 
+# 5. 核心逻辑控制
 if data_file is not None and template_file is not None:
-    # 🎯 核心优化 2：加入“开始生成”按钮，只有点击后才会触发数据处理，防止自动加载和报错
-    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-    start_button = st.button("🚀 开始一键智能分装", use_container_width=True)
-    
-    if start_button:
-        with st.spinner("🔄 正在完美克隆模板格式并精准填充数据，请稍候..."):
+    # 增加手动点击生成的控制状态，防止自动刷新导致反复计算
+    if "generated_data" not in st.session_state:
+        st.session_state.generated_data = None
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    # 显式提供【开始生成】按钮
+    if st.button("🔥 开始一键生成党员积分卡", type="primary"):
+        with st.spinner("🔄 正在精密对齐数据并自动分装，请稍候..."):
             try:
                 # 读取汇总数据
                 data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
                 df_data = pd.read_excel(data_file, header=1, engine=data_engine)
                 
+                # 智能在所有列名中寻找包含“姓名”或“党员”的列
                 name_col = None
                 for col in df_data.columns:
                     if '姓名' in str(col) or '党员' in str(col):
@@ -71,11 +58,14 @@ if data_file is not None and template_file is not None:
                 if name_col is None:
                     name_col = df_data.columns
                 
+                # 提取所有的分数项列
                 score_cols = df_data.columns[3:].tolist()
                 
+                # 创建总工作簿
                 output_wb = openpyxl.Workbook()
                 active_first_sheet = output_wb.active
                 
+                # 读取标准模板
                 template_wb = openpyxl.load_workbook(template_file)
                 ws_template = template_wb.active
                 
@@ -86,6 +76,7 @@ if data_file is not None and template_file is not None:
                     if not name or name == 'nan' or '党员姓名' in name or '备注' in name or '表格' in name or '党支部' in name:
                         continue
                         
+                    # 创建以党员姓名命名的独立工作表
                     if generated_count == 0:
                         ws_new = active_first_sheet
                         ws_new.title = f"{name}"
@@ -116,44 +107,48 @@ if data_file is not None and template_file is not None:
                         ws_new.merge_cells(start_row=merged_range.min_row, start_column=merged_range.min_col,
                                            end_row=merged_range.max_row, end_column=merged_range.max_col)
                     
-                    # 纯净填入数据
+                    # 纯净填入数据并进行对齐格式统一
                     score_index = 0
                     for r in range(3, ws_new.max_row + 1):
                         val_b = str(ws_new.cell(row=r, column=2).value)
                         if val_b and any(f"{i}." in val_b for i in range(1, 10)):
                             
-                            # 🎯 核心优化 1：强制将数据格子的格式设置为“水平居中、垂直居中”，并统一数字格式，解决第一行跟后面错位、对齐不一致的问题！
-                            alignment_style = openpyxl.styles.Alignment(horizontal="center", vertical="center", wrap_text=True)
+                            # 强行指定数值在格子内的对齐方式（水平居中、垂直居中），并保留一位小数格式
+                            center_alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
                             
                             # 填入自评得分（C列）
                             if score_index < len(score_cols):
                                 cell_c = ws_new.cell(row=r, column=3, value=row[score_cols[score_index]])
-                                cell_c.alignment = alignment_style
-                                cell_c.number_format = '0.0' # 统一样式为保留一位小数（如13.8）
+                                cell_c.alignment = center_alignment
+                                cell_c.number_format = '0.0'
                                 score_index += 1
+                                
                             # 填入考核得分（D列）
                             if score_index < len(score_cols):
                                 cell_d = ws_new.cell(row=r, column=4, value=row[score_cols[score_index]])
-                                cell_d.alignment = alignment_style
+                                cell_d.alignment = center_alignment
                                 cell_d.number_format = '0.0'
                                 score_index += 1
                     
                     generated_count += 1
 
+                # 将结果存入二进制流
                 buffer = io.BytesIO()
                 output_wb.save(buffer)
                 buffer.seek(0)
                 
-                st.balloons() # 成功后弹出一整屏幕的喜庆气球，拉满推广仪式感！
-                st.success(f"🎉 分装大功告成！已成功为 {generated_count} 名党员生成了与原模板格式100%一致的独立工作表。")
-                
-                st.download_button(
-                    label="📥 点击一键下载【全员纯净独立积分卡总表】.xlsx",
-                    data=buffer,
-                    file_name='全员纯净独立积分卡总表.xlsx',
-                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    use_container_width=True
-                )
+                st.session_state.generated_data = buffer
+                st.success(f"🎉 分装成功！已为您自动生成了全员独立积分卡表格。")
                 
             except Exception as e:
-                st.error(f"❌ 自动化拆分分装时出现错误: {e}")
+                st.error(f"❌ 自动化分装时出现错误: {e}")
+
+    # 6. 展示下载按钮
+    if st.session_state.generated_data is not None:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.download_button(
+            label="📥 点击一键下载【全员原样样式积分卡总表.xlsx】",
+            data=st.session_state.generated_data,
+            file_name='全员党员积分卡分装总表.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
