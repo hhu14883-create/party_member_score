@@ -2,13 +2,11 @@ import streamlit as st
 import pandas as pd
 import io
 import openpyxl
-from openpyxl.utils import get_column_letter
 
 st.set_page_config(page_title="党员积分卡多工作表自动生成系统", layout="wide")
 st.title("🇨🇳 党员积分卡一键自动分装生成系统")
 st.write("请在下方依次上传您的【全员汇总资料表】和【标准考核模板】，系统已完美兼容 XLS 和 XLSX 格式。")
 
-# 1. 🎯 核心优化：在 type 中同时加入 "xlsx" 和 "xls"，完美兼任两种格式
 col1, col2 = st.columns(2)
 with col1:
     data_file = st.file_uploader("📥 请上传《党员积分表_全部72人整合版》（所有人数据汇总表）", type=["xlsx", "xls"])
@@ -39,25 +37,20 @@ if data_file is not None and template_file is not None:
         default_sheet = output_wb.active
         output_wb.remove(default_sheet)
         
-        # 3. 兼容读取标准考核模板
-        if template_file.name.endswith('xls'):
-            # 如果模板是旧版 xls，先用 pandas 读，但由于 openpyxl 不支持直接载入 xls 的样式，建议提醒用户或云端静默转换
-            # 为了保证100%带有原本漂亮的合并单元格和样式，强力推荐模板使用 xlsx 格式
-            st.warning("⚠️ 检测到您的【空白考核模板】是旧版 .xls 格式。旧版格式可能会丢失原本的单元格颜色和精细边框，强烈建议将空白模板在电脑上“另存为” .xlsx 格式再行上传，效果最完美！")
-            
+        # 兼容读取标准考核模板
         template_wb = openpyxl.load_workbook(template_file)
         ws_template = template_wb.active
         
         generated_count = 0
         for index, row in df_data.iterrows():
             name = str(row[name_col]).strip()
-            if not name or name == 'nan':
+            if not name or name == 'nan' or '党员姓名' in name:
                 continue
                 
             # 为每一位党员复制一个带原样式的Sheet
             ws_new = output_wb.create_sheet(title=f"{name}-积分卡")
             
-            # 精准复制模板的结构、内容和合并单元格样式
+            # 精准复制模板的结构、内容和样式
             for r in range(1, ws_template.max_row + 1):
                 for c in range(1, ws_template.max_column + 1):
                     cell_template = ws_template.cell(row=r, column=c)
@@ -70,16 +63,17 @@ if data_file is not None and template_file is not None:
                         if cell_template.fill:
                             cell_new.fill = openpyxl.styles.PatternFill(fill_type=cell_template.fill.fill_type, start_color=cell_template.fill.start_color, end_color=cell_template.fill.end_color)
             
-            # 填补合并单元格
+            # 🎯 核心修复：使用最新版 openpyxl 的 min_row / max_row 规范来复制合并单元格，彻底解决报错
             for merged_range in ws_template.merged_cells.ranges:
-                ws_new.merge_cells(start_row=merged_range.start_row, start_column=merged_range.start_column,
-                                   end_row=merged_range.end_row, end_column=merged_range.end_column)
+                ws_new.merge_cells(start_row=merged_range.min_row, start_column=merged_range.min_col,
+                                   end_row=merged_range.max_row, end_column=merged_range.max_col)
             
             # 🎯 核心映射：将总表里一长串的得分，按顺序填入到新Sheet对应的“自评得分”和“考核得分”格子中
             score_index = 0
             for r in range(3, ws_new.max_row + 1):
                 val_b = str(ws_new.cell(row=r, column=2).value)
-                if val_b and ('1.' in val_b or '2.' in val_b or '3.' in val_b or '4.' in val_b) and score_index < len(score_cols):
+                # 兼容表格中带有序号内容的评分项行
+                if val_b and any(f"{i}." in val_b for i in range(1, 10)) and score_index < len(score_cols):
                     # 填入自评得分
                     if score_index < len(score_cols):
                         ws_new.cell(row=r, column=3, value=row[score_cols[score_index]])
@@ -89,7 +83,7 @@ if data_file is not None and template_file is not None:
                         ws_new.cell(row=r, column=4, value=row[score_cols[score_index]])
                         score_index += 1
             
-            # 在顶部或者合适空白处写入个人标志（可根据实际微调位置）
+            # 在顶部合并的第一行直接优雅覆盖写入个人标志
             ws_new.cell(row=1, column=1, value=f"🇨🇳 党员姓名: {name}   党支部: {row[branch_col]}   党小组: {row[group_col]}")
             generated_count += 1
 
