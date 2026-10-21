@@ -2,14 +2,16 @@ import streamlit as st
 import pandas as pd
 import io
 import openpyxl
+import re
+import copy
 
-# 1. 网页标题（完全回归官方原生无干涉主题，确保文字清晰可见）
+# 1. 网页标题
 st.set_page_config(page_title="党员积分卡一键自动分装生成系统", layout="wide")
 
 st.title("党员积分卡一键自动分装生成系统")
 st.write("---") # 优雅的分割线
 
-# 2. 左右并排的两大核心上传框（无任何魔改样式，确保所有车间的人都能看清文字）
+# 2. 左右并排的两大核心上传框
 col1, col2 = st.columns(2)
 with col1:
     data_file = st.file_uploader("📥 上传：全员数据汇总表", type=["xlsx", "xls"])
@@ -22,10 +24,9 @@ st.write("<br>", unsafe_allow_html=True)
 if "generated_data" not in st.session_state:
     st.session_state.generated_data = None
 
-# 3. 创建三个分栏，让按钮老老实实呆在正中间，宽度完全正常，绝不折行
+# 3. 创建居中按钮
 b_col1, b_col2, b_col3 = st.columns([1, 2, 1])
 with b_col2:
-    # 显式提供标准、大方的手动【开始生成】按钮
     start_btn = st.button("🔥 开始一键生成党员积分卡", type="primary", use_container_width=True)
 
 # 4. 点击生成按钮后的核心业务逻辑
@@ -62,16 +63,24 @@ if start_btn:
                 generated_count = 0
                 
                 for index, row in df_data.iterrows():
-                    name = str(row[name_col]).strip()
-                    if not name or name == 'nan' or '党员姓名' in name or '备注' in name or '表格' in name or '党支部' in name:
+                    raw_name = str(row[name_col]).strip()
+                    if not raw_name or raw_name == 'nan' or '党员姓名' in raw_name or '备注' in raw_name or '表格' in raw_name or '党支部' in raw_name:
                         continue
+                        
+                    # 清理 Excel Sheet 非法字符并防止重名
+                    safe_name = re.sub(r'[\\/*?:\[\]\s]', '', raw_name)[:25]
+                    sheet_title = safe_name
+                    count = 1
+                    while sheet_title in output_wb.sheetnames:
+                        sheet_title = f"{safe_name}_{count}"
+                        count += 1
                         
                     # 区分首 sheet 与后续 sheet
                     if generated_count == 0:
                         ws_new = active_first_sheet
-                        ws_new.title = f"{name}"
+                        ws_new.title = sheet_title
                     else:
-                        ws_new = output_wb.create_sheet(title=f"{name}")
+                        ws_new = output_wb.create_sheet(title=sheet_title)
                     
                     # 克隆列宽与行高
                     for col_letter, col_dim in ws_template.column_dimensions.items():
@@ -86,23 +95,26 @@ if start_btn:
                             cell_new = ws_new.cell(row=r, column=c, value=cell_template.value)
                             
                             if cell_template.has_style:
-                                cell_new.font = openpyxl.styles.Font(name=cell_template.font.name, size=cell_template.font.size, bold=cell_template.font.bold, color=cell_template.font.color)
-                                cell_new.alignment = openpyxl.styles.Alignment(horizontal=cell_template.alignment.horizontal, vertical=cell_template.alignment.vertical, wrap_text=cell_template.alignment.wrap_text)
-                                cell_new.border = openpyxl.styles.Border(left=cell_template.border.left, right=cell_template.border.right, top=cell_template.border.top, bottom=cell_template.border.bottom)
+                                if cell_template.font:
+                                    cell_new.font = copy.copy(cell_template.font)
+                                if cell_template.alignment:
+                                    cell_new.alignment = copy.copy(cell_template.alignment)
+                                if cell_template.border:
+                                    cell_new.border = copy.copy(cell_template.border)
                                 if cell_template.fill:
-                                    cell_new.fill = openpyxl.styles.PatternFill(fill_type=cell_template.fill.fill_type, start_color=cell_template.fill.start_color, end_color=cell_template.fill.end_color)
+                                    cell_new.fill = copy.copy(cell_template.fill)
                     
                     # 复制合并单元格
                     for merged_range in ws_template.merged_cells.ranges:
                         ws_new.merge_cells(start_row=merged_range.min_row, start_column=merged_range.min_col,
                                            end_row=merged_range.max_row, end_column=merged_range.max_col)
                     
-                    # 数据录入
+                    # 数据录入（使用正则精确匹配指标行，支持20条以上）
                     score_index = 0
                     for r in range(3, ws_new.max_row + 1):
                         val_b = str(ws_new.cell(row=r, column=2).value)
-                        if val_b and any(f"{i}." in val_b for i in range(1, 10)):
-                            
+                        # 使用正则匹配类似 "1.", "2." 等开头的考评条目
+                        if val_b and re.match(r'^\d+\.', val_b.strip()):
                             center_alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
                             
                             # 填入自评（C列）
@@ -127,12 +139,12 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！已为您自动生成全员独立积分卡表格。")
+                st.success(f"🎉 分装成功！已成功为您自动生成全部 {generated_count} 位党员的独立积分卡工作簿。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
 
-# 5. 生成成功后，同样居中优雅地展示标准下载按钮
+# 5. 生成成功后展示标准下载按钮
 if st.session_state.generated_data is not None:
     st.write("<br>", unsafe_allow_html=True)
     d_col1, d_col2, d_col3 = st.columns([1, 2, 1])
