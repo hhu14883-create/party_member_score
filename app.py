@@ -17,9 +17,19 @@ if data_file is not None and template_file is not None:
     try:
         st.info("🔄 正在完美克隆模板格式并填充数据，请稍候...")
         
-        # 1. 精准读取汇总数据（header=1 代表第2行是真正的党员姓名等列标题，完美绕过MultiIndex清洗错误）
+        # 1. 精准读取汇总数据
         data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
         df_data = pd.read_excel(data_file, header=1, engine=data_engine)
+        
+        # 🎯 核心修复：智能在所有列名中寻找包含“姓名”或“党员”的列，确保百分之百精准定位到纯姓名！
+        name_col = None
+        for col in df_data.columns:
+            if '姓名' in str(col) or '党员' in str(col):
+                name_col = col
+                break
+        # 如果万一没找到，则保底使用第二列
+        if name_col is None:
+            name_col = df_data.columns[1]
         
         # 2. 提取所有的分数项列（前3列固定为名次、姓名、支部/小组，后面全部是分数）
         score_cols = df_data.columns[3:].tolist()
@@ -36,11 +46,11 @@ if data_file is not None and template_file is not None:
         
         # 3. 正确遍历每一行，精准锁定每一个党员
         for index, row in df_data.iterrows():
-            # 🎯 核心修复：精准定位第二列的‘党员姓名’字段（无视任何翻译干扰），防止全白！
-            name = str(row.iloc[1]).strip() if len(row) > 1 else ""
+            # 🎯 核心修复：直接通过找到的列名提取纯姓名，彻底告别“客一党支部”等标签乱象
+            name = str(row[name_col]).strip()
             
             # 过滤掉完全为空的无意义行或标题行
-            if not name or name == 'nan' or '党员姓名' in name or '备注' in name or '表格' in name:
+            if not name or name == 'nan' or '党员姓名' in name or '备注' in name or '表格' in name or '党支部' in name:
                 continue
                 
             # 4. 完美避免空壳文件报错：第一个人重命名活动页，后面的人新建
