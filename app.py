@@ -66,7 +66,7 @@ if start_btn:
                 ws_catalog.title = "目录"
                 
                 # 设置目录大标题
-                ws_catalog.merge_cells("A1:C1")
+                ws_catalog.merge_cells("A1:D1")
                 title_cell = ws_catalog.cell(row=1, column=1, value="党员月度积分考评结果汇总目录")
                 title_cell.font = openpyxl.styles.Font(name="宋体", size=14, bold=True, color="FFFFFF")
                 title_cell.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
@@ -74,7 +74,7 @@ if start_btn:
                 ws_catalog.row_dimensions[1].height = 35
                 
                 # 设置表头 (第2行)
-                catalog_headers = ["党员姓名", "操作链接（点击跳转相应表格）", "考核总分"]
+                catalog_headers = ["党员姓名", "操作链接（点击跳转相应表格）", "限制条件", "考核总分"]
                 thin_side = openpyxl.styles.Side(border_style="thin", color="D9D9D9")
                 thick_bottom = openpyxl.styles.Side(border_style="medium", color="366092")
                 header_border = openpyxl.styles.Border(left=thin_side, right=thin_side, top=thick_bottom, bottom=thick_bottom)
@@ -88,9 +88,10 @@ if start_btn:
                     cell.fill = openpyxl.styles.PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
                 
                 # 精细化调整目录列宽与间距
-                ws_catalog.column_dimensions['A'].width = 22
-                ws_catalog.column_dimensions['B'].width = 36
-                ws_catalog.column_dimensions['C'].width = 20
+                ws_catalog.column_dimensions['A'].width = 20
+                ws_catalog.column_dimensions['B'].width = 34
+                ws_catalog.column_dimensions['C'].width = 16
+                ws_catalog.column_dimensions['D'].width = 18
                 
                 valid_rows = []
                 for index, row in df_data.iterrows():
@@ -128,27 +129,43 @@ if start_btn:
                     cell_link.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_link.border = row_border
                     
-                    # 3. 总分栏
+                    # 3. 限制条件判定（依据第17项限制条件指标列，若有异常/触发则显示“限制”，否则为空）
+                    limit_text = ""
+                    try:
+                        # 对应资料表中第17项限制条件列索引（根据数据表结构获取评估值）
+                        limit_val = row.iloc[36] if len(row) > 36 else 0
+                        if pd.notna(limit_val) and str(limit_val).strip() != "" and str(limit_val) != "1" and str(limit_val) != "1.0":
+                            limit_text = "限制"
+                    except:
+                        limit_text = ""
+                        
+                    cell_limit = ws_catalog.cell(row=idx, column=3, value=limit_text)
+                    cell_limit.font = openpyxl.styles.Font(name="宋体", size=10, bold=True, color="C00000" if limit_text else "000000")
+                    cell_limit.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
+                    cell_limit.border = row_border
+                    
+                    # 4. 总分栏
                     total_score = 0.0
                     try:
                         total_score = row.iloc[-1] if not pd.isna(row.iloc[-1]) else row.iloc[-2]
                     except:
                         total_score = 0.0
                         
-                    cell_score = ws_catalog.cell(row=idx, column=3, value=total_score)
+                    cell_score = ws_catalog.cell(row=idx, column=4, value=total_score)
                     cell_score.font = openpyxl.styles.Font(name="宋体", size=10, bold=True, color="000000")
                     cell_score.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_score.border = row_border
                     cell_score.number_format = '0.0000'
                     
-                    # 斑马纹交替底色，美观大方
+                    # 斑马纹交替底色
                     if idx % 2 == 0:
                         row_fill = openpyxl.styles.PatternFill(start_color="F9FBFD", end_color="F9FBFD", fill_type="solid")
                         cell_name.fill = row_fill
                         cell_link.fill = row_fill
+                        cell_limit.fill = row_fill
                         cell_score.fill = row_fill
 
-                    # 4. 创建党员个人 Sheet
+                    # 5. 创建党员个人 Sheet
                     ws_new = output_wb.create_sheet(title=sheet_title)
                     
                     # 克隆列宽与行高
@@ -157,7 +174,7 @@ if start_btn:
                     for row_num, row_dim in ws_template.row_dimensions.items():
                         ws_new.row_dimensions[row_num].height = row_dim.height
                     
-                    # 5. 复制模板所有单元格样式，且取消除左侧大标题和表头以外内容的加粗
+                    # 6. 复制模板所有单元格样式，取消正文加粗
                     for r in range(1, ws_template.max_row + 1):
                         for c in range(1, ws_template.max_column + 1):
                             cell_template = ws_template.cell(row=r, column=c)
@@ -165,7 +182,6 @@ if start_btn:
                             
                             if cell_template.has_style:
                                 if cell_template.font:
-                                    # 规则：保持左侧标题(c=1且r>=2)和表头(r=1,2)原本的粗体，其余评定正文内容强制不加粗
                                     is_left_category = (c == 1 and r >= 2 and r <= 24)
                                     is_header_row = (r <= 2)
                                     should_be_bold = cell_template.font.bold if (is_left_category or is_header_row) else False
@@ -189,7 +205,7 @@ if start_btn:
                         ws_new.merge_cells(start_row=merged_range.min_row, start_column=merged_range.min_col,
                                            end_row=merged_range.max_row, end_column=merged_range.max_col)
                     
-                    # 6. 标题行：设置返回目录的超链接
+                    # 7. 标题行：设置返回目录的超链接
                     title_cell = ws_new.cell(row=1, column=1)
                     original_title_text = str(title_cell.value) if title_cell.value else "党员责任岗月度积分考评指标体系指导范本（作业岗位）"
                     clean_title = original_title_text.split('\n')[0].strip()
@@ -199,7 +215,7 @@ if start_btn:
                     title_cell.font = openpyxl.styles.Font(name="宋体", size=11, bold=True, color="0000FF")
                     title_cell.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-                    # 7. 数据填入（自评/考核分，并保持居中）
+                    # 8. 数据填入（自评/考核分，并保持居中）
                     score_index = 0
                     for r in range(3, ws_new.max_row + 1):
                         val_b = str(ws_new.cell(row=r, column=2).value)
@@ -226,7 +242,7 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！美化后的目录页与精准加粗控制已全部完成。")
+                st.success(f"🎉 分装成功！美化后的目录页（含限制条件判定）、双向跳转及加粗控制已全部搞定。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
