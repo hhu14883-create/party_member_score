@@ -8,7 +8,7 @@ import copy
 # 1. 网页标题
 st.set_page_config(page_title="党员积分卡一键自动分装生成系统", layout="wide")
 
-st.title("党员积分卡一键自动分装生成系统（含智能目录与跳转）")
+st.title("党员积分卡一键自动分装生成系统（双向智能跳转）")
 st.write("---")
 
 # 2. 左右并排的两大核心上传框
@@ -27,14 +27,14 @@ if "generated_data" not in st.session_state:
 # 3. 创建居中按钮
 b_col1, b_col2, b_col3 = st.columns([1, 2, 1])
 with b_col2:
-    start_btn = st.button("🔥 开始一键生成党员积分卡（带目录跳转）", type="primary", use_container_width=True)
+    start_btn = st.button("🔥 开始一键生成党员积分卡（双向跳转）", type="primary", use_container_width=True)
 
 # 4. 点击生成按钮后的核心业务逻辑
 if start_btn:
     if data_file is None or template_file is None:
         st.error("❌ 请先在上方把两个 Excel 文件全部上传完整！")
     else:
-        with st.spinner("🔄 正在精密生成目录、对齐数据并自动分装，请稍候..."):
+        with st.spinner("🔄 正在精密生成双向跳转目录、对齐数据并自动分装，请稍候..."):
             try:
                 # 读取汇总数据
                 data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
@@ -98,7 +98,7 @@ if start_btn:
                     valid_rows.append((row, sheet_title, raw_name))
                 
                 # ---------------------------------------------------------
-                # 第二步：循环生成每个党员的个人 Sheet，并写入目录链接
+                # 第二步：循环生成每个党员的个人 Sheet，并写入双向跳转链接
                 # ---------------------------------------------------------
                 for idx, (row, sheet_title, raw_name) in enumerate(valid_rows, start=2):
                     # 1. 写入目录行
@@ -107,13 +107,13 @@ if start_btn:
                     cell_name.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_name.border = thin_border
                     
-                    # 使用 Excel 标准 HYPERLINK 公式（完美解决 WPS/Excel 内部跳转报错问题）
+                    # 目录页 -> 跳转个人表
                     cell_link = ws_catalog.cell(row=idx, column=2, value=f'=HYPERLINK("#\'{sheet_title}\'!A1", "点击跳转相应表格")')
                     cell_link.font = openpyxl.styles.Font(name="宋体", size=10, color="0000FF", underline="single")
                     cell_link.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_link.border = thin_border
                     
-                    # 计算总分（取最后两列或各项得分之和的平均/公式值）
+                    # 计算总分
                     total_score = ""
                     try:
                         total_score = row.iloc[-1] if not pd.isna(row.iloc[-1]) else row.iloc[-2]
@@ -156,6 +156,20 @@ if start_btn:
                         ws_new.merge_cells(start_row=merged_range.min_row, start_column=merged_range.min_col,
                                            end_row=merged_range.max_row, end_column=merged_range.max_col)
                     
+                    # ---------------------------------------------------------
+                    # 3. 核心新增：把个人表格第一行的标题改成“点击标题返回目录”的超链接公式
+                    # ---------------------------------------------------------
+                    title_cell = ws_new.cell(row=1, column=1)
+                    original_title_text = str(title_cell.value) if title_cell.value else "党员责任岗月度积分考评指标体系指导范本（作业岗位）"
+                    # 清理可能存在的旧换行并加上提示
+                    clean_title = original_title_text.split('\n')[0].strip()
+                    display_title_text = f'{clean_title}\n（点击标题返回目录）'
+                    
+                    # 写入返回目录的 HYPERLINK 公式
+                    title_cell.value = f'=HYPERLINK("#\'目录\'!A1", "{display_title_text}")'
+                    title_cell.font = openpyxl.styles.Font(name="宋体", size=11, bold=True, color="0000FF")
+                    title_cell.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center", wrap_text=True)
+
                     # 数据录入
                     score_index = 0
                     for r in range(3, ws_new.max_row + 1):
@@ -183,7 +197,7 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！目录页已生成，并成功为全部 {len(valid_rows)} 位党员建立跳转链接。")
+                st.success(f"🎉 分装成功！双向跳转（目录 ⇄ 个人表头）已全部配好，共生成 {len(valid_rows)} 位党员档案。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
@@ -194,9 +208,9 @@ if st.session_state.generated_data is not None:
     d_col1, d_col2, d_col3 = st.columns([1, 2, 1])
     with d_col2:
         st.download_button(
-            label="📥 点击一键下载【含目录跳转的党员积分卡总表.xlsx】",
+            label="📥 点击一键下载【双向跳转党员积分卡总表.xlsx】",
             data=st.session_state.generated_data,
-            file_name='党员积分卡分装总表_含目录.xlsx',
+            file_name='党员积分卡分装总表_双向跳转.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             use_container_width=True
         )
