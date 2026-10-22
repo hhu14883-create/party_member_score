@@ -8,7 +8,7 @@ import copy
 # 1. 网页标题
 st.set_page_config(page_title="党员积分卡一键自动分装生成系统", layout="wide")
 
-st.title("党员积分卡一键自动分装生成系统（细节完美对齐版）")
+st.title("党员积分卡一键自动分装生成系统（终极精准加粗版）")
 st.write("---")
 
 # 2. 左右并排的两大核心上传框
@@ -27,14 +27,14 @@ if "generated_data" not in st.session_state:
 # 3. 创建居中按钮
 b_col1, b_col2, b_col3 = st.columns([1, 2, 1])
 with b_col2:
-    start_btn = st.button("🔥 开始一键生成党员积分卡（精准细节版）", type="primary", use_container_width=True)
+    start_btn = st.button("🔥 开始一键生成党员积分卡（终极版）", type="primary", use_container_width=True)
 
 # 4. 点击生成按钮后的核心业务逻辑
 if start_btn:
     if data_file is None or template_file is None:
         st.error("❌ 请先在上方把两个 Excel 文件全部上传完整！")
     else:
-        with st.spinner("🔄 正在精密对齐字体、粗体、双向跳转并分装，请稍候..."):
+        with st.spinner("🔄 正在精密格式化、强制指定加粗、双向跳转并分装，请稍候..."):
             try:
                 # 读取汇总数据
                 data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
@@ -135,22 +135,23 @@ if start_btn:
                     for row_num, row_dim in ws_template.row_dimensions.items():
                         ws_new.row_dimensions[row_num].height = row_dim.height
                     
-                    # 3. 完美复制模板所有单元格的内容、字体粗细、边框、填充及对齐
+                    # 3. 复制模板内容、边框、填充及对齐
                     for r in range(1, ws_template.max_row + 1):
                         for c in range(1, ws_template.max_column + 1):
                             cell_template = ws_template.cell(row=r, column=c)
                             cell_new = ws_new.cell(row=r, column=c, value=cell_template.value)
                             
                             if cell_template.has_style:
-                                if cell_template.font:
-                                    # 显式保留模板原有的粗体(bold)、斜体、字号和字体名称
-                                    cell_new.font = openpyxl.styles.Font(
-                                        name=cell_template.font.name,
-                                        size=cell_template.font.size,
-                                        bold=cell_template.font.bold,
-                                        italic=cell_template.font.italic,
-                                        color=cell_template.font.color
-                                    )
+                                # 检查 B 列的评分标准行，强制全部加粗
+                                is_score_content_col = (c == 2 and r >= 2 and r <= 24)
+                                
+                                cell_new.font = openpyxl.styles.Font(
+                                    name=cell_template.font.name if cell_template.font else "宋体",
+                                    size=cell_template.font.size if cell_template.font else 10,
+                                    bold=True if is_score_content_col else (cell_template.font.bold if cell_template.font else False),
+                                    italic=cell_template.font.italic if cell_template.font else False,
+                                    color=cell_template.font.color if cell_template.font else "000000"
+                                )
                                 if cell_template.alignment:
                                     cell_new.alignment = copy.copy(cell_template.alignment)
                                 if cell_template.border:
@@ -200,7 +201,7 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！粗体细节、双向跳转及总分统计已全部完美搞定。")
+                st.success(f"🎉 分装成功！所有评分条目已强制加粗，双向跳转与总分统计完美就绪。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
@@ -211,9 +212,9 @@ if st.session_state.generated_data is not None:
     d_col1, d_col2, d_col3 = st.columns([1, 2, 1])
     with d_col2:
         st.download_button(
-            label="📥 点击一键下载【细节完美对齐的党员积分卡总表.xlsx】",
+            label="📥 点击一键下载【强制加粗且双向跳转的党员积分卡总表.xlsx】",
             data=st.session_state.generated_data,
-            file_name='党员积分卡分装总表_细节完美版.xlsx',
+            file_name='党员积分卡分装总表_强制加粗版.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             use_container_width=True
         )
