@@ -107,17 +107,15 @@ if start_btn:
                     cell_name.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_name.border = thin_border
                     
-                    cell_link = ws_catalog.cell(row=idx, column=2, value="点击跳转相应表格")
+                    # 使用 Excel 标准 HYPERLINK 公式（完美解决 WPS/Excel 内部跳转报错问题）
+                    cell_link = ws_catalog.cell(row=idx, column=2, value=f'=HYPERLINK("#\'{sheet_title}\'!A1", "点击跳转相应表格")')
                     cell_link.font = openpyxl.styles.Font(name="宋体", size=10, color="0000FF", underline="single")
                     cell_link.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_link.border = thin_border
-                    # 设置 Excel 内部超链接公式：跳转到对应 Sheet 的 A1 单元格
-                    cell_link.hyperlink = f"#'{sheet_title}'!A1"
                     
                     # 计算总分（取最后两列或各项得分之和的平均/公式值）
                     total_score = ""
                     try:
-                        # 尝试获取最后一列作为总分，或者计算平均分
                         total_score = row.iloc[-1] if not pd.isna(row.iloc[-1]) else row.iloc[-2]
                     except:
                         total_score = 0.0
