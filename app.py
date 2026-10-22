@@ -34,7 +34,7 @@ if start_btn:
     if data_file is None or template_file is None:
         st.error("❌ 请先在上方把两个 Excel 文件全部上传完整！")
     else:
-        with st.spinner("🔄 正在精密排版美化目录、同步新职工与限制条件并自动分装，请稍候..."):
+        with st.spinner("🔄 正在精密排版美化目录、精准匹配新职工与限制标记并自动分装，请稍候..."):
             try:
                 # 读取汇总数据
                 data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
@@ -129,19 +129,23 @@ if start_btn:
                     cell_link.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_link.border = row_border
                     
-                    # 3. 限制条件判定：精准读取第 AK 列（索引 36）的内容，支持“限制”或“新职工”等标记
+                    # 3. 限制条件 / 新职工 精准判定：读取第 AK 列（索引 36）的内容
                     limit_text = ""
                     try:
                         ak_val = row.iloc[36] if len(row) > 36 else None
                         if pd.notna(ak_val):
                             val_str = str(ak_val).strip()
-                            if "限制" in val_str or "新职工" in val_str:
+                            if "新职工" in val_str:
+                                limit_text = "新职工"
+                            elif "限制" in val_str:
                                 limit_text = "限制"
                     except:
                         limit_text = ""
                         
                     cell_limit = ws_catalog.cell(row=idx, column=3, value=limit_text)
-                    cell_limit.font = openpyxl.styles.Font(name="宋体", size=10, bold=True, color="C00000" if limit_text else "000000")
+                    # 如果是新职工用蓝色/常色显示，如果是限制用醒目的红色显示
+                    text_color = "0070C0" if limit_text == "新职工" else ("C00000" if limit_text == "限制" else "000000")
+                    cell_limit.font = openpyxl.styles.Font(name="宋体", size=10, bold=True, color=text_color)
                     cell_limit.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_limit.border = row_border
                     
@@ -243,7 +247,7 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！目录页限制条件已成功联动 AK 列（含新职工/限制判定）。")
+                st.success(f"🎉 分装成功！“新职工”与“限制”标记已完美区分并显示在目录页中。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
