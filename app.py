@@ -8,8 +8,8 @@ import copy
 # 1. 网页标题
 st.set_page_config(page_title="党员积分卡一键自动分装生成系统", layout="wide")
 
-st.title("党员积分卡一键自动分装生成系统")
-st.write("---") # 优雅的分割线
+st.title("党员积分卡一键自动分装生成系统（含智能目录与跳转）")
+st.write("---")
 
 # 2. 左右并排的两大核心上传框
 col1, col2 = st.columns(2)
@@ -27,14 +27,14 @@ if "generated_data" not in st.session_state:
 # 3. 创建居中按钮
 b_col1, b_col2, b_col3 = st.columns([1, 2, 1])
 with b_col2:
-    start_btn = st.button("🔥 开始一键生成党员积分卡", type="primary", use_container_width=True)
+    start_btn = st.button("🔥 开始一键生成党员积分卡（带目录跳转）", type="primary", use_container_width=True)
 
 # 4. 点击生成按钮后的核心业务逻辑
 if start_btn:
     if data_file is None or template_file is None:
         st.error("❌ 请先在上方把两个 Excel 文件全部上传完整！")
     else:
-        with st.spinner("🔄 正在精密对齐数据并自动分装，请稍候..."):
+        with st.spinner("🔄 正在精密生成目录、对齐数据并自动分装，请稍候..."):
             try:
                 # 读取汇总数据
                 data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
@@ -54,33 +54,82 @@ if start_btn:
                 
                 # 创建总工作簿
                 output_wb = openpyxl.Workbook()
-                active_first_sheet = output_wb.active
                 
                 # 读取标准模板
                 template_wb = openpyxl.load_workbook(template_file)
                 ws_template = template_wb.active
                 
-                generated_count = 0
+                # ---------------------------------------------------------
+                # 第一步：创建“目录” Sheet (放在最前面)
+                # ---------------------------------------------------------
+                ws_catalog = output_wb.active
+                ws_catalog.title = "目录"
                 
+                # 设置目录表头
+                catalog_headers = ["姓名", "链接点击跳转栏", "总分"]
+                thin_side = openpyxl.styles.Side(border_style="thin", color="000000")
+                thin_border = openpyxl.styles.Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+                
+                for c_idx, h_text in enumerate(catalog_headers, start=1):
+                    cell = ws_catalog.cell(row=1, column=c_idx, value=h_text)
+                    cell.font = openpyxl.styles.Font(name="宋体", size=11, bold=True)
+                    cell.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
+                    cell.border = thin_border
+                    cell.fill = openpyxl.styles.PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+                
+                ws_catalog.column_dimensions['A'].width = 18
+                ws_catalog.column_dimensions['B'].width = 25
+                ws_catalog.column_dimensions['C'].width = 15
+                
+                valid_rows = []
                 for index, row in df_data.iterrows():
                     raw_name = str(row[name_col]).strip()
                     if not raw_name or raw_name == 'nan' or '党员姓名' in raw_name or '备注' in raw_name or '表格' in raw_name or '党支部' in raw_name:
                         continue
-                        
-                    # 清理 Excel Sheet 非法字符并防止重名
+                    
+                    # 清理 Sheet 非法字符并防止重名
                     safe_name = re.sub(r'[\\/*?:\[\]\s]', '', raw_name)[:25]
                     sheet_title = safe_name
                     count = 1
-                    while sheet_title in output_wb.sheetnames:
+                    while sheet_title in output_wb.sheetnames or sheet_title == "目录":
                         sheet_title = f"{safe_name}_{count}"
                         count += 1
                         
-                    # 区分首 sheet 与后续 sheet
-                    if generated_count == 0:
-                        ws_new = active_first_sheet
-                        ws_new.title = sheet_title
-                    else:
-                        ws_new = output_wb.create_sheet(title=sheet_title)
+                    valid_rows.append((row, sheet_title, raw_name))
+                
+                # ---------------------------------------------------------
+                # 第二步：循环生成每个党员的个人 Sheet，并写入目录链接
+                # ---------------------------------------------------------
+                for idx, (row, sheet_title, raw_name) in enumerate(valid_rows, start=2):
+                    # 1. 写入目录行
+                    cell_name = ws_catalog.cell(row=idx, column=1, value=raw_name)
+                    cell_name.font = openpyxl.styles.Font(name="宋体", size=10)
+                    cell_name.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
+                    cell_name.border = thin_border
+                    
+                    cell_link = ws_catalog.cell(row=idx, column=2, value="点击跳转相应表格")
+                    cell_link.font = openpyxl.styles.Font(name="宋体", size=10, color="0000FF", underline="single")
+                    cell_link.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
+                    cell_link.border = thin_border
+                    # 设置 Excel 内部超链接公式：跳转到对应 Sheet 的 A1 单元格
+                    cell_link.hyperlink = f"#'{sheet_title}'!A1"
+                    
+                    # 计算总分（取最后两列或各项得分之和的平均/公式值）
+                    total_score = ""
+                    try:
+                        # 尝试获取最后一列作为总分，或者计算平均分
+                        total_score = row.iloc[-1] if not pd.isna(row.iloc[-1]) else row.iloc[-2]
+                    except:
+                        total_score = 0.0
+                        
+                    cell_score = ws_catalog.cell(row=idx, column=3, value=total_score)
+                    cell_score.font = openpyxl.styles.Font(name="宋体", size=10)
+                    cell_score.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
+                    cell_score.border = thin_border
+                    cell_score.number_format = '0.0000'
+                    
+                    # 2. 创建党员个人 Sheet
+                    ws_new = output_wb.create_sheet(title=sheet_title)
                     
                     # 克隆列宽与行高
                     for col_letter, col_dim in ws_template.column_dimensions.items():
@@ -109,11 +158,10 @@ if start_btn:
                         ws_new.merge_cells(start_row=merged_range.min_row, start_column=merged_range.min_col,
                                            end_row=merged_range.max_row, end_column=merged_range.max_col)
                     
-                    # 数据录入（使用正则精确匹配指标行，支持20条以上）
+                    # 数据录入
                     score_index = 0
                     for r in range(3, ws_new.max_row + 1):
                         val_b = str(ws_new.cell(row=r, column=2).value)
-                        # 使用正则匹配类似 "1.", "2." 等开头的考评条目
                         if val_b and re.match(r'^\d+\.', val_b.strip()):
                             center_alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
                             
@@ -130,8 +178,6 @@ if start_btn:
                                 cell_d.alignment = center_alignment
                                 cell_d.number_format = '0.0'
                                 score_index += 1
-                    
-                    generated_count += 1
 
                 # 打包二进制流
                 buffer = io.BytesIO()
@@ -139,7 +185,7 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！已成功为您自动生成全部 {generated_count} 位党员的独立积分卡工作簿。")
+                st.success(f"🎉 分装成功！目录页已生成，并成功为全部 {len(valid_rows)} 位党员建立跳转链接。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
@@ -150,9 +196,9 @@ if st.session_state.generated_data is not None:
     d_col1, d_col2, d_col3 = st.columns([1, 2, 1])
     with d_col2:
         st.download_button(
-            label="📥 点击一键下载【全员原样样式积分卡总表.xlsx】",
+            label="📥 点击一键下载【含目录跳转的党员积分卡总表.xlsx】",
             data=st.session_state.generated_data,
-            file_name='全员党员积分卡分装总表.xlsx',
+            file_name='党员积分卡分装总表_含目录.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             use_container_width=True
         )
