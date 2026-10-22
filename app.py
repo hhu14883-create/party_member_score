@@ -34,7 +34,7 @@ if start_btn:
     if data_file is None or template_file is None:
         st.error("❌ 请先在上方把两个 Excel 文件全部上传完整！")
     else:
-        with st.spinner("🔄 正在精密排版美化目录、对齐 AK 列限制条件并自动分装，请稍候..."):
+        with st.spinner("🔄 正在精密排版美化目录、适配限制条件并自动分装，请稍候..."):
             try:
                 # 读取汇总数据
                 data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
@@ -129,20 +129,15 @@ if start_btn:
                     cell_link.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_link.border = row_border
                     
-                    # 3. 限制条件判定（依据数据表中第 AK 列 / 索引36 的考核得分进行判定）
+                    # 3. 限制条件判定（修正：仅当 AK 列得分等于 0 或明确触发限制时显示“限制”，否则为空）
                     limit_text = ""
                     try:
                         ak_val = row.iloc[36] if len(row) > 36 else None
-                        # 如果 AK 列得分不为空且小于标准分（例如标准满分或存在扣减异常），则判定为“限制”
-                        # 您可以根据实际业务逻辑微调此处的判定条件
                         if pd.notna(ak_val):
-                            try:
-                                val_num = float(ak_val)
-                                if val_num < 5.0:  # 若得分小于5分或有扣分，可根据实际调整阈值
-                                    limit_text = "限制"
-                            except:
-                                if str(ak_val).strip() != "" and str(ak_val) != "1" and str(ak_val) != "1.0":
-                                    limit_text = "限制"
+                            val_str = str(ak_val).strip()
+                            # 只有当得分为 0 或者明确包含限制/违章说明时才标记
+                            if val_str == "0" or val_str == "0.0" or "违章" in val_str or "受限" in val_str:
+                                limit_text = "限制"
                     except:
                         limit_text = ""
                         
@@ -249,7 +244,7 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！目录页已完美美化，AK列限制条件已精准适配。")
+                st.success(f"🎉 分装成功！限制条件逻辑已修正，无违章/未受限人员的限制列将正确保持空白。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
