@@ -8,7 +8,7 @@ import copy
 # 1. 网页标题
 st.set_page_config(page_title="党员积分卡一键自动分装生成系统", layout="wide")
 
-st.title("党员积分卡一键自动分装生成系统（极速稳定版）")
+st.title("党员积分卡一键自动分装生成系统")
 st.write("---")
 
 # 2. 左右并排的两大核心上传框
@@ -34,7 +34,7 @@ if start_btn:
     if data_file is None or template_file is None:
         st.error("❌ 请先在上方把两个 Excel 文件全部上传完整！")
     else:
-        with st.spinner("🔄 正在精密对齐数据、设置双向跳转并分装，请稍候..."):
+        with st.spinner("🔄 正在精密排版美化目录、对齐数据并自动分装，请稍候..."):
             try:
                 # 读取汇总数据
                 data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
@@ -60,26 +60,37 @@ if start_btn:
                 ws_template = template_wb.active
                 
                 # ---------------------------------------------------------
-                # 第一步：创建“目录” Sheet (放在最前面)
+                # 第一步：创建高度美化的“目录” Sheet (放在最前面)
                 # ---------------------------------------------------------
                 ws_catalog = output_wb.active
                 ws_catalog.title = "目录"
                 
-                # 设置目录表头
-                catalog_headers = ["姓名", "链接点击跳转栏", "总分"]
-                thin_side = openpyxl.styles.Side(border_style="thin", color="000000")
-                thin_border = openpyxl.styles.Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+                # 设置目录大标题
+                ws_catalog.merge_cells("A1:C1")
+                title_cell = ws_catalog.cell(row=1, column=1, value="党员月度积分考评结果汇总目录")
+                title_cell.font = openpyxl.styles.Font(name="宋体", size=14, bold=True, color="FFFFFF")
+                title_cell.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
+                title_cell.fill = openpyxl.styles.PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+                ws_catalog.row_dimensions[1].height = 35
                 
+                # 设置表头 (第2行)
+                catalog_headers = ["党员姓名", "操作链接（点击跳转相应表格）", "考核总分"]
+                thin_side = openpyxl.styles.Side(border_style="thin", color="D9D9D9")
+                thick_bottom = openpyxl.styles.Side(border_style="medium", color="366092")
+                header_border = openpyxl.styles.Border(left=thin_side, right=thin_side, top=thick_bottom, bottom=thick_bottom)
+                
+                ws_catalog.row_dimensions[2].height = 25
                 for c_idx, h_text in enumerate(catalog_headers, start=1):
-                    cell = ws_catalog.cell(row=1, column=c_idx, value=h_text)
-                    cell.font = openpyxl.styles.Font(name="宋体", size=11, bold=True)
+                    cell = ws_catalog.cell(row=2, column=c_idx, value=h_text)
+                    cell.font = openpyxl.styles.Font(name="宋体", size=11, bold=True, color="333333")
                     cell.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
-                    cell.border = thin_border
-                    cell.fill = openpyxl.styles.PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+                    cell.border = header_border
+                    cell.fill = openpyxl.styles.PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
                 
-                ws_catalog.column_dimensions['A'].width = 18
-                ws_catalog.column_dimensions['B'].width = 25
-                ws_catalog.column_dimensions['C'].width = 15
+                # 精细化调整目录列宽与间距
+                ws_catalog.column_dimensions['A'].width = 22
+                ws_catalog.column_dimensions['B'].width = 36
+                ws_catalog.column_dimensions['C'].width = 20
                 
                 valid_rows = []
                 for index, row in df_data.iterrows():
@@ -98,35 +109,46 @@ if start_btn:
                     valid_rows.append((row, sheet_title, raw_name))
                 
                 # ---------------------------------------------------------
-                # 第二步：循环生成每个党员的个人 Sheet
+                # 第二步：循环生成每个党员的个人 Sheet，并写入目录链接
                 # ---------------------------------------------------------
-                for idx, (row, sheet_title, raw_name) in enumerate(valid_rows, start=2):
-                    # 1. 写入目录行
+                row_border = openpyxl.styles.Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+                
+                for idx, (row, sheet_title, raw_name) in enumerate(valid_rows, start=3):
+                    ws_catalog.row_dimensions[idx].height = 24
+                    
+                    # 1. 姓名栏
                     cell_name = ws_catalog.cell(row=idx, column=1, value=raw_name)
-                    cell_name.font = openpyxl.styles.Font(name="宋体", size=10)
+                    cell_name.font = openpyxl.styles.Font(name="宋体", size=10, color="000000")
                     cell_name.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
-                    cell_name.border = thin_border
+                    cell_name.border = row_border
                     
-                    # 目录页 -> 跳转个人表
+                    # 2. 链接跳转栏
                     cell_link = ws_catalog.cell(row=idx, column=2, value=f'=HYPERLINK("#\'{sheet_title}\'!A1", "点击跳转相应表格")')
-                    cell_link.font = openpyxl.styles.Font(name="宋体", size=10, color="0000FF", underline="single")
+                    cell_link.font = openpyxl.styles.Font(name="宋体", size=10, color="0070C0", underline="single")
                     cell_link.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
-                    cell_link.border = thin_border
+                    cell_link.border = row_border
                     
-                    # 计算总分
-                    total_score = ""
+                    # 3. 总分栏
+                    total_score = 0.0
                     try:
                         total_score = row.iloc[-1] if not pd.isna(row.iloc[-1]) else row.iloc[-2]
                     except:
                         total_score = 0.0
                         
                     cell_score = ws_catalog.cell(row=idx, column=3, value=total_score)
-                    cell_score.font = openpyxl.styles.Font(name="宋体", size=10)
+                    cell_score.font = openpyxl.styles.Font(name="宋体", size=10, bold=True, color="000000")
                     cell_score.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
-                    cell_score.border = thin_border
+                    cell_score.border = row_border
                     cell_score.number_format = '0.0000'
                     
-                    # 2. 创建党员个人 Sheet
+                    # 斑马纹交替底色，美观大方
+                    if idx % 2 == 0:
+                        row_fill = openpyxl.styles.PatternFill(start_color="F9FBFD", end_color="F9FBFD", fill_type="solid")
+                        cell_name.fill = row_fill
+                        cell_link.fill = row_fill
+                        cell_score.fill = row_fill
+
+                    # 4. 创建党员个人 Sheet
                     ws_new = output_wb.create_sheet(title=sheet_title)
                     
                     # 克隆列宽与行高
@@ -135,7 +157,7 @@ if start_btn:
                     for row_num, row_dim in ws_template.row_dimensions.items():
                         ws_new.row_dimensions[row_num].height = row_dim.height
                     
-                    # 3. 完美复制模板所有单元格的内容与基础样式
+                    # 5. 复制模板所有单元格样式，且取消除左侧大标题和表头以外内容的加粗
                     for r in range(1, ws_template.max_row + 1):
                         for c in range(1, ws_template.max_column + 1):
                             cell_template = ws_template.cell(row=r, column=c)
@@ -143,7 +165,18 @@ if start_btn:
                             
                             if cell_template.has_style:
                                 if cell_template.font:
-                                    cell_new.font = copy.copy(cell_template.font)
+                                    # 规则：保持左侧标题(c=1且r>=2)和表头(r=1,2)原本的粗体，其余评定正文内容强制不加粗
+                                    is_left_category = (c == 1 and r >= 2 and r <= 24)
+                                    is_header_row = (r <= 2)
+                                    should_be_bold = cell_template.font.bold if (is_left_category or is_header_row) else False
+                                    
+                                    cell_new.font = openpyxl.styles.Font(
+                                        name=cell_template.font.name,
+                                        size=cell_template.font.size,
+                                        bold=should_be_bold,
+                                        italic=cell_template.font.italic,
+                                        color=cell_template.font.color
+                                    )
                                 if cell_template.alignment:
                                     cell_new.alignment = copy.copy(cell_template.alignment)
                                 if cell_template.border:
@@ -156,7 +189,7 @@ if start_btn:
                         ws_new.merge_cells(start_row=merged_range.min_row, start_column=merged_range.min_col,
                                            end_row=merged_range.max_row, end_column=merged_range.max_col)
                     
-                    # 4. 标题行：设置返回目录的超链接
+                    # 6. 标题行：设置返回目录的超链接
                     title_cell = ws_new.cell(row=1, column=1)
                     original_title_text = str(title_cell.value) if title_cell.value else "党员责任岗月度积分考评指标体系指导范本（作业岗位）"
                     clean_title = original_title_text.split('\n')[0].strip()
@@ -166,7 +199,7 @@ if start_btn:
                     title_cell.font = openpyxl.styles.Font(name="宋体", size=11, bold=True, color="0000FF")
                     title_cell.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-                    # 5. 数据填入（自评/考核分，并保持居中）
+                    # 7. 数据填入（自评/考核分，并保持居中）
                     score_index = 0
                     for r in range(3, ws_new.max_row + 1):
                         val_b = str(ws_new.cell(row=r, column=2).value)
@@ -193,20 +226,20 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！目录、双向跳转及总分统计已全部顺利生成。")
+                st.success(f"🎉 分装成功！美化后的目录页与精准加粗控制已全部完成。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
 
-# 6. 生成成功后展示标准下载按钮
+# 5. 生成成功后展示标准下载按钮
 if st.session_state.generated_data is not None:
     st.write("<br>", unsafe_allow_html=True)
     d_col1, d_col2, d_col3 = st.columns([1, 2, 1])
     with d_col2:
         st.download_button(
-            label="📥 点击一键下载【党员积分卡总表.xlsx】",
+            label="📥 点击一键下载【美化版党员积分卡总表.xlsx】",
             data=st.session_state.generated_data,
-            file_name='党员积分卡分装总表.xlsx',
+            file_name='党员积分卡分装总表_美化版.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             use_container_width=True
         )
