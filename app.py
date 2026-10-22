@@ -4,13 +4,11 @@ import io
 import openpyxl
 import re
 import copy
-from openpyxl.cell.text import InlineFont
-from openpyxl.text.richtext import TextBlock, CellRichText
 
 # 1. 网页标题
 st.set_page_config(page_title="党员积分卡一键自动分装生成系统", layout="wide")
 
-st.title("党员积分卡一键自动分装生成系统（精准局部加粗版）")
+st.title("党员积分卡一键自动分装生成系统（极速稳定版）")
 st.write("---")
 
 # 2. 左右并排的两大核心上传框
@@ -29,34 +27,14 @@ if "generated_data" not in st.session_state:
 # 3. 创建居中按钮
 b_col1, b_col2, b_col3 = st.columns([1, 2, 1])
 with b_col2:
-    start_btn = st.button("🔥 开始一键生成党员积分卡（精准加粗版）", type="primary", use_container_width=True)
-
-# 需要精准加粗的 16 条指定短句列表
-BOLD_TARGET_TEXTS = [
-    "1.思想和言行与党中央保持高度一致，坚决执行上级党组织的各项要求，积10分。",
-    "2.积极参加“三会一课”、主题党日等党的组织生活，全勤且每次均认真参加，积10分。",
-    "3.认真参加政治理论学习，按计划完成学习任务，积5分。",
-    "4.严格遵守党员网络行为有关规定，无不良网络言行，积5分。",
-    "1.积极参加段、车间、班组业务学习，全勤且每次均认真参加，积10分。",
-    "2.参加车间级及以上业务抽考成绩80-89分，积2分；90分以上，积5分。",
-    "3.主动帮助身边职工提升业务技能（如指导规章学习、示范实作操作、解答岗位疑问）经党支部（党小组）确认，积5分。",
-    "1.严格执标作业，无作业类B类及以上“两违”，积5分；无作业类C类及以上“两违”，积10分。",
-    "2.及时发现或处置安全隐患险情，防止安全生产事故，积5分。",
-    "3.积极开展突击奉献，主动参与急难险重任务，积5/次。",
-    "1.无损害党组织形象的不良反映，积5分。",
-    "2.自觉遵守社会公德、职业道德、家庭美德，积5分。",
-    "3.工作中实事求是、作风踏实、敢于担当负责，无“四风”问题反映，积5分。",
-    "1.团结身边职工群众，主动接受职工群众评价，无不良反映，积5分。",
-    "2.主动接受职工群众评价，无不良反映，积5分。",
-    "3.落实党员联系服务职工群众制度，做好身边职工群众工作，积5分。"
-]
+    start_btn = st.button("🔥 开始一键生成党员积分卡", type="primary", use_container_width=True)
 
 # 4. 点击生成按钮后的核心业务逻辑
 if start_btn:
     if data_file is None or template_file is None:
         st.error("❌ 请先在上方把两个 Excel 文件全部上传完整！")
     else:
-        with st.spinner("🔄 正在精密格式化、局部加粗、设置双向跳转并分装，请稍候..."):
+        with st.spinner("🔄 正在精密对齐数据、设置双向跳转并分装，请稍候..."):
             try:
                 # 读取汇总数据
                 data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
@@ -157,40 +135,14 @@ if start_btn:
                     for row_num, row_dim in ws_template.row_dimensions.items():
                         ws_new.row_dimensions[row_num].height = row_dim.height
                     
-                    # 3. 复制模板内容，并对特定 16 条短句进行局部加粗处理
+                    # 3. 完美复制模板所有单元格的内容与基础样式
                     for r in range(1, ws_template.max_row + 1):
                         for c in range(1, ws_template.max_column + 1):
                             cell_template = ws_template.cell(row=r, column=c)
-                            cell_new = ws_new.cell(row=r, column=c)
-                            
-                            val = cell_template.value
-                            
-                            # 针对 B 列评价内容，判断是否包含需要加粗的短句
-                            if c == 2 and val and isinstance(val, str):
-                                matched_target = None
-                                for target in BOLD_TARGET_TEXTS:
-                                    if target in val:
-                                        matched_target = target
-                                        break
-                                
-                                if matched_target:
-                                    # 拆分为：需要加粗的前半句 + 保持常规的后半句
-                                    remainder = val[len(matched_target):]
-                                    font_bold = InlineFont(rFont="宋体", sz=10, b=True)
-                                    font_normal = InlineFont(rFont="宋体", sz=10, b=False)
-                                    
-                                    rich_text = CellRichText(
-                                        TextBlock(font_bold, matched_target),
-                                        TextBlock(font_normal, remainder)
-                                    )
-                                    cell_new.value = rich_text
-                                else:
-                                    cell_new.value = val
-                            else:
-                                cell_new.value = val
+                            cell_new = ws_new.cell(row=r, column=c, value=cell_template.value)
                             
                             if cell_template.has_style:
-                                if cell_template.font and not (c == 2 and isinstance(cell_new.value, CellRichText)):
+                                if cell_template.font:
                                     cell_new.font = copy.copy(cell_template.font)
                                 if cell_template.alignment:
                                     cell_new.alignment = copy.copy(cell_template.alignment)
@@ -241,7 +193,7 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！指定的 16 条核心短句已精准局部加粗，双向跳转与总分统计完全就绪。")
+                st.success(f"🎉 分装成功！目录、双向跳转及总分统计已全部顺利生成。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
@@ -252,9 +204,9 @@ if st.session_state.generated_data is not None:
     d_col1, d_col2, d_col3 = st.columns([1, 2, 1])
     with d_col2:
         st.download_button(
-            label="📥 点击一键下载【精准局部加粗版党员积分卡总表.xlsx】",
+            label="📥 点击一键下载【党员积分卡总表.xlsx】",
             data=st.session_state.generated_data,
-            file_name='党员积分卡分装总表_精准加粗版.xlsx',
+            file_name='党员积分卡分装总表.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             use_container_width=True
         )
