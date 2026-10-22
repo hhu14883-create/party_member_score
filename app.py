@@ -34,7 +34,7 @@ if start_btn:
     if data_file is None or template_file is None:
         st.error("❌ 请先在上方把两个 Excel 文件全部上传完整！")
     else:
-        with st.spinner("🔄 正在精密排版美化目录、严格对齐AK列文字并自动分装，请稍候..."):
+        with st.spinner("🔄 正在精密排版美化目录、同步新职工与限制条件并自动分装，请稍候..."):
             try:
                 # 读取汇总数据
                 data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
@@ -129,13 +129,13 @@ if start_btn:
                     cell_link.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_link.border = row_border
                     
-                    # 3. 限制条件判定：精准抓取第 AK 列（索引 36）的内容，只要写了“限制”就加上，否则空着
+                    # 3. 限制条件判定：精准读取第 AK 列（索引 36）的内容，支持“限制”或“新职工”等标记
                     limit_text = ""
                     try:
                         ak_val = row.iloc[36] if len(row) > 36 else None
                         if pd.notna(ak_val):
                             val_str = str(ak_val).strip()
-                            if "限制" in val_str:
+                            if "限制" in val_str or "新职工" in val_str:
                                 limit_text = "限制"
                     except:
                         limit_text = ""
@@ -243,7 +243,7 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！目录页已完美美化，AK列限制条件判定已按您的要求精准对齐。")
+                st.success(f"🎉 分装成功！目录页限制条件已成功联动 AK 列（含新职工/限制判定）。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
