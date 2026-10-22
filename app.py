@@ -34,7 +34,7 @@ if start_btn:
     if data_file is None or template_file is None:
         st.error("❌ 请先在上方把两个 Excel 文件全部上传完整！")
     else:
-        with st.spinner("🔄 正在精密排版美化目录、动态识别限制条件并自动分装，请稍候..."):
+        with st.spinner("🔄 正在精密排版美化目录、严格对齐AK列文字并自动分装，请稍候..."):
             try:
                 # 读取汇总数据
                 data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
@@ -129,19 +129,14 @@ if start_btn:
                     cell_link.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_link.border = row_border
                     
-                    # 3. 动态从表格数据源中检测限制条件（检查第17项及后续否决项数据列中是否有触发、扣分或异常标记）
+                    # 3. 限制条件判定：精准抓取第 AK 列（索引 36）的内容，只要写了“限制”就加上，否则空着
                     limit_text = ""
                     try:
-                        # 检查对应限制条件及否决条件列（从索引 35 到 46 范围内的自评/考核得分）
-                        for c_idx in range(35, 47):
-                            if c_idx < len(row):
-                                val = row.iloc[c_idx]
-                                if pd.notna(val):
-                                    val_str = str(val).strip()
-                                    # 如果分数为0或者包含受限/违章提示，则判定该项触发限制
-                                    if val_str == "0" or val_str == "0.0" or "违章" in val_str or "受限" in val_str or "限制" in val_str:
-                                        limit_text = "限制"
-                                        break
+                        ak_val = row.iloc[36] if len(row) > 36 else None
+                        if pd.notna(ak_val):
+                            val_str = str(ak_val).strip()
+                            if "限制" in val_str:
+                                limit_text = "限制"
                     except:
                         limit_text = ""
                         
@@ -248,7 +243,7 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！已通过表格数据源动态智能识别限制条件，排版与双向跳转完美呈现。")
+                st.success(f"🎉 分装成功！目录页已完美美化，AK列限制条件判定已按您的要求精准对齐。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
@@ -259,9 +254,9 @@ if st.session_state.generated_data is not None:
     d_col1, d_col2, d_col3 = st.columns([1, 2, 1])
     with d_col2:
         st.download_button(
-            label="📥 点击一键下载【动态智能识别版党员积分卡总表.xlsx】",
+            label="📥 点击一键下载【美化版党员积分卡总表.xlsx】",
             data=st.session_state.generated_data,
-            file_name='党员积分卡分装总表_智能版.xlsx',
+            file_name='党员积分卡分装总表_美化版.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             use_container_width=True
         )
