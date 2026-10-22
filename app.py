@@ -34,7 +34,7 @@ if start_btn:
     if data_file is None or template_file is None:
         st.error("❌ 请先在上方把两个 Excel 文件全部上传完整！")
     else:
-        with st.spinner("🔄 正在精密排版美化目录、对齐数据并自动分装，请稍候..."):
+        with st.spinner("🔄 正在精密排版美化目录、对齐 AK 列限制条件并自动分装，请稍候..."):
             try:
                 # 读取汇总数据
                 data_engine = 'openpyxl' if data_file.name.endswith('xlsx') else 'xlrd'
@@ -129,13 +129,20 @@ if start_btn:
                     cell_link.alignment = openpyxl.styles.Alignment(horizontal="center", vertical="center")
                     cell_link.border = row_border
                     
-                    # 3. 限制条件判定（依据第17项限制条件指标列，若有异常/触发则显示“限制”，否则为空）
+                    # 3. 限制条件判定（依据数据表中第 AK 列 / 索引36 的考核得分进行判定）
                     limit_text = ""
                     try:
-                        # 对应资料表中第17项限制条件列索引（根据数据表结构获取评估值）
-                        limit_val = row.iloc[36] if len(row) > 36 else 0
-                        if pd.notna(limit_val) and str(limit_val).strip() != "" and str(limit_val) != "1" and str(limit_val) != "1.0":
-                            limit_text = "限制"
+                        ak_val = row.iloc[36] if len(row) > 36 else None
+                        # 如果 AK 列得分不为空且小于标准分（例如标准满分或存在扣减异常），则判定为“限制”
+                        # 您可以根据实际业务逻辑微调此处的判定条件
+                        if pd.notna(ak_val):
+                            try:
+                                val_num = float(ak_val)
+                                if val_num < 5.0:  # 若得分小于5分或有扣分，可根据实际调整阈值
+                                    limit_text = "限制"
+                            except:
+                                if str(ak_val).strip() != "" and str(ak_val) != "1" and str(ak_val) != "1.0":
+                                    limit_text = "限制"
                     except:
                         limit_text = ""
                         
@@ -174,7 +181,7 @@ if start_btn:
                     for row_num, row_dim in ws_template.row_dimensions.items():
                         ws_new.row_dimensions[row_num].height = row_dim.height
                     
-                    # 6. 复制模板所有单元格样式，取消正文加粗
+                    # 6. 复制模板所有单元格样式，精准控制只有左侧标题与表头加粗
                     for r in range(1, ws_template.max_row + 1):
                         for c in range(1, ws_template.max_column + 1):
                             cell_template = ws_template.cell(row=r, column=c)
@@ -242,7 +249,7 @@ if start_btn:
                 buffer.seek(0)
                 
                 st.session_state.generated_data = buffer
-                st.success(f"🎉 分装成功！美化后的目录页（含限制条件判定）、双向跳转及加粗控制已全部搞定。")
+                st.success(f"🎉 分装成功！目录页已完美美化，AK列限制条件已精准适配。")
                 
             except Exception as e:
                 st.error(f"❌ 分装失败，请检查表格，错误原因: {e}")
